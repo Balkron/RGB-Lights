@@ -93,7 +93,6 @@ float stepSize = 0.001f;
 
 ColorHSV current_hsv = {0, 1.0, 1.0};
 ColorRGB color;
-bool buttonPressedLastState = false;
 bool encoderALastState = false;
 bool encoderBLastState = false;
 INPUT_STATE inputState = INPUT_STATE::HUE;
@@ -108,7 +107,6 @@ inline void updateLEDs()
 
 void setup()
 {
-    Serial.begin(115200);
     pinMode(PINS::ROTARY_ENCODER_A, INPUT);
     pinMode(PINS::ROTARY_ENCODER_B, INPUT);
     pinMode(PINS::BUTTON, INPUT);
@@ -122,8 +120,7 @@ void setup()
     }
     if (current_hsv.hue < 0 || current_hsv.hue >= 360)
     {
-        randomSeed(analogRead(0));
-        current_hsv.hue = random(360);
+        current_hsv.hue = 0;
     }
     if (current_hsv.saturation < 0 || current_hsv.saturation > 1.0)
     {
@@ -133,7 +130,6 @@ void setup()
     {
         current_hsv.brightness = 1.0;
     }
-    buttonPressedLastState = digitalRead(PINS::BUTTON);
     updateLEDs();
 }
 
@@ -175,18 +171,29 @@ void rotaryRead(PINS pin_1, PINS pin_2, int adjustmentDirection)
 
 void loop()
 {
-    bool buttonPressed = digitalRead(PINS::BUTTON);
-    digitalWrite(LED_BUILTIN, buttonPressed);
-
-    if (buttonPressed && !buttonPressedLastState)
+    if (!digitalRead(PINS::BUTTON))
     {
-        inputState = static_cast<INPUT_STATE>((inputState + 1) % 3);
-        buttonPressedLastState = buttonPressed;
+        unsigned long start = millis();
+        while (!digitalRead(PINS::BUTTON))
+        {
+            if ((millis() - start) > 2000)
+            {
+                current_hsv = {0, 1.0, 1.0};
+                if (EEPROM.length() > 0)
+                {
+                    EEPROM.put(0, current_hsv);
+                }
+                updateLEDs();
+                inputState = INPUT_STATE::HUE;
+            }
+        }
+
+        if ((millis() - start) < 2000)
+            inputState = static_cast<INPUT_STATE>((inputState + 1) % 3);
+            
         delayMicroseconds(100);
         return;
     }
-
-    buttonPressedLastState = buttonPressed;
 
     bool encoderA = digitalRead(PINS::ROTARY_ENCODER_A);
     bool encoderB = digitalRead(PINS::ROTARY_ENCODER_B);
@@ -200,6 +207,5 @@ void loop()
         rotaryRead(PINS::ROTARY_ENCODER_B, PINS::ROTARY_ENCODER_A, -ADJUSTMENT_MULTIPLIER);
     }
 
-    // Serial.print("\rButton State: " + String(buttonPressed) + " " + String(encoderA) + " " + String(encoderB) + " Hue: " + String(current_hsv.hue) + " Brightness: " + String(current_hsv.brightness) + " Saturation: " + String(current_hsv.saturation) + " RGB: (" + String(color.red) + ", " + String(color.green) + ", " + String(color.blue) + ")   ");
     delayMicroseconds(10); // Kurze Verzögerung für die PWM-Steuerung
 }
