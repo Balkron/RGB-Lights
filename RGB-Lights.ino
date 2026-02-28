@@ -158,11 +158,11 @@ void rotaryRead(PINS pin_1, PINS pin_2, int adjustmentDirection)
         break;
 
     case INPUT_STATE::BRIGHTNESS:
-        current_hsv.brightness = max(0.0, current_hsv.brightness + 0.01 * adjustmentDirection);
+        current_hsv.brightness = min(max(0.0, current_hsv.brightness + 0.01 * adjustmentDirection), 1.0);
         break;
 
     case INPUT_STATE::SATURATION:
-        current_hsv.saturation = max(0.0, current_hsv.saturation + 0.01 * adjustmentDirection);
+        current_hsv.saturation = min(max(0.0, current_hsv.saturation + 0.01 * adjustmentDirection), 1.0);
         break;
     }
 
