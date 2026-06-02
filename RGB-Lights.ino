@@ -32,7 +32,7 @@ enum MODES
     FLASHING
 };
 
-enum INPUT_STATE
+enum INPUT_MODE
 {
     HUE,
     BRIGHTNESS,
@@ -88,14 +88,55 @@ ColorRGB brightnessHueToRGB(ColorHSV hsv)
     return {static_cast<int>((r + m) * 255), static_cast<int>((g + m) * 255), static_cast<int>((b + m) * 255)};
 }
 
-float radian = 0.0f;
-float stepSize = 0.001f;
+enum Rotation
+{
+    NONE,
+    CLOCKWISE,
+    COUNTERCLOCKWISE
+};
+
+class RotaryEncoder
+{
+private:
+    uint8_t inputBuffer;
+    const uint8_t patternLeftRotation = 0b10000111;
+    const uint8_t patternRightRotation = 0b01001011;
+
+public:
+    RotaryEncoder()
+    {
+        inputBuffer = 0b00000011;
+    }
+
+    void update(bool inputA, bool inputB)
+    {
+        int8_t currentState = (inputA << 1) | inputB;
+
+        if (currentState != (inputBuffer & 0b11))
+        {
+            inputBuffer = (inputBuffer << 2) | currentState;
+        }
+    }
+
+    Rotation read()
+    {
+        if (inputBuffer == patternLeftRotation)
+        {
+            inputBuffer = 0;
+            return Rotation::COUNTERCLOCKWISE;
+        }
+        else if (inputBuffer == patternRightRotation)
+        {
+            inputBuffer = 0;
+            return Rotation::CLOCKWISE;
+        }
+
+        return Rotation::NONE;
+    }
+};
 
 ColorHSV current_hsv = {0, 1.0, 1.0};
-ColorRGB color;
-bool encoderALastState = false;
-bool encoderBLastState = false;
-INPUT_STATE inputState = INPUT_STATE::HUE;
+INPUT_MODE inputMode = INPUT_MODE::HUE;
 
 inline void updateLEDs()
 {
@@ -104,6 +145,10 @@ inline void updateLEDs()
     analogWrite(PINS::LED_GREEN, color.green);
     analogWrite(PINS::LED_BLUE, color.blue);
 }
+
+RotaryEncoder rotaryEncoder;
+
+unsigned long lastColorChange = 0UL;
 
 void setup()
 {
@@ -133,44 +178,22 @@ void setup()
     updateLEDs();
 }
 
-void rotaryRead(PINS pin_1, PINS pin_2, int adjustmentDirection)
-{
-    while (digitalRead(pin_2))
-    {
-    }
-
-    while (!digitalRead(pin_1))
-    {
-    }
-
-    while (!digitalRead(pin_2))
-    {
-    }
-
-    switch (inputState)
-    {
-    case INPUT_STATE::HUE:
-        current_hsv.hue = (360 + current_hsv.hue + adjustmentDirection) % 360;
-        break;
-
-    case INPUT_STATE::BRIGHTNESS:
-        current_hsv.brightness = min(max(0.0, current_hsv.brightness + 0.01 * adjustmentDirection), 1.0);
-        break;
-
-    case INPUT_STATE::SATURATION:
-        current_hsv.saturation = min(max(0.0, current_hsv.saturation + 0.01 * adjustmentDirection), 1.0);
-        break;
-    }
-
-    if (EEPROM.length() > 0)
-    {
-        EEPROM.put(0, current_hsv);
-    }
-    updateLEDs();
-}
-
 void loop()
 {
+    if (lastColorChange)
+    {
+        if ((millis() - lastColorChange) > 60000)
+        {
+            if (EEPROM.length() > 0)
+            {
+                EEPROM.put(0, current_hsv);
+            }
+            lastColorChange = 0UL;
+        }
+    }
+
+    rotaryEncoder.update(digitalRead(PINS::ROTARY_ENCODER_A), digitalRead(PINS::ROTARY_ENCODER_B));
+
     if (!digitalRead(PINS::BUTTON))
     {
         unsigned long start = millis();
@@ -181,31 +204,49 @@ void loop()
                 current_hsv = {0, 1.0, 1.0};
                 if (EEPROM.length() > 0)
                 {
-                    EEPROM.put(0, current_hsv);
+                    lastColorChange = millis();
                 }
                 updateLEDs();
-                inputState = INPUT_STATE::HUE;
+                inputMode = INPUT_MODE::HUE;
             }
         }
 
         if ((millis() - start) < 2000)
-            inputState = static_cast<INPUT_STATE>((inputState + 1) % 3);
-            
+            inputMode = static_cast<INPUT_MODE>((inputMode + 1) % 3);
+
         delayMicroseconds(100);
         return;
     }
 
-    bool encoderA = digitalRead(PINS::ROTARY_ENCODER_A);
-    bool encoderB = digitalRead(PINS::ROTARY_ENCODER_B);
+    Rotation rotation = rotaryEncoder.read();
 
-    if (!encoderA && encoderB)
+    if (rotation != Rotation::NONE)
     {
-        rotaryRead(PINS::ROTARY_ENCODER_A, PINS::ROTARY_ENCODER_B, ADJUSTMENT_MULTIPLIER);
+        int adjustmentDirection = (rotation == Rotation::CLOCKWISE) ? ADJUSTMENT_MULTIPLIER : -ADJUSTMENT_MULTIPLIER;
+
+        switch (inputMode)
+        {
+        case INPUT_MODE::HUE:
+            current_hsv.hue = (360 + current_hsv.hue + adjustmentDirection) % 360;
+            break;
+
+        case INPUT_MODE::BRIGHTNESS:
+            current_hsv.brightness = min(max(0.0, current_hsv.brightness + 0.01 * adjustmentDirection), 1.0);
+            break;
+
+        case INPUT_MODE::SATURATION:
+            current_hsv.saturation = min(max(0.0, current_hsv.saturation + 0.01 * adjustmentDirection), 1.0);
+            break;
+        }
+
+        if (EEPROM.length() > 0)
+        {
+            lastColorChange = millis();
+        }
+
+        updateLEDs();
     }
-    else if (!encoderB && encoderA)
-    {
-        rotaryRead(PINS::ROTARY_ENCODER_B, PINS::ROTARY_ENCODER_A, -ADJUSTMENT_MULTIPLIER);
-    }
+
 
     delayMicroseconds(10); // Kurze Verzögerung für die PWM-Steuerung
 }
