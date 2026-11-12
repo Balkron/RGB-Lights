@@ -16,9 +16,9 @@ struct ColorHSV
 
 enum PINS
 {
-    ROTARY_ENCODER_A = 5,
+    BUTTON = 5,
+    ROTARY_ENCODER_A,
     ROTARY_ENCODER_B,
-    BUTTON,
     LED_RED = 9,
     LED_GREEN,
     LED_BLUE
@@ -35,8 +35,8 @@ enum MODES
 enum INPUT_MODE
 {
     HUE,
-    BRIGHTNESS,
-    SATURATION
+    SATURATION,
+    BRIGHTNESS
 };
 
 // Funktion zum Umwandeln von Helligkeit und Farbe in RGB
@@ -182,7 +182,7 @@ void loop()
 {
     if (lastColorChange)
     {
-        if ((millis() - lastColorChange) > 60000)
+        if ((millis() - lastColorChange) > 5000)
         {
             if (EEPROM.length() > 0)
             {
@@ -192,7 +192,7 @@ void loop()
         }
     }
 
-    rotaryEncoder.update(digitalRead(PINS::ROTARY_ENCODER_A), digitalRead(PINS::ROTARY_ENCODER_B));
+    rotaryEncoder.update(digitalRead(PINS::ROTARY_ENCODER_B), digitalRead(PINS::ROTARY_ENCODER_A));
 
     if (!digitalRead(PINS::BUTTON))
     {
@@ -246,7 +246,6 @@ void loop()
 
         updateLEDs();
     }
-
 
     delayMicroseconds(10); // Kurze Verzögerung für die PWM-Steuerung
 }
